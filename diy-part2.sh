@@ -1,39 +1,37 @@
 #!/bin/bash
-#
-# https://github.com/P3TERX/Actions-OpenWrt
-# File name: diy-part2.sh
-# Description: OpenWrt DIY script part 2 (After Update feeds)
-#
-# Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
-#
-# This is free software, licensed under the MIT License.
-# See /LICENSE for more information.
-#
+set -e
 
-# Modify default IP
-#sed -i 's/192.168.1.1/192.168.50.5/g' package/base-files/files/bin/config_generate
-
-# Modify default theme
-#sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
-
-# Modify hostname
-#sed -i 's/OpenWrt/P3TERX-Router/g' package/base-files/files/bin/config_generate
-
-# 临时解决Rust问题
+# Keep original rust tweak from upstream repo
 sed -i 's/ci-llvm=true/ci-llvm=false/g' feeds/packages/lang/rust/Makefile
 
-# add date in output file name
-sed -i -e '/^IMG_PREFIX:=/i BUILD_DATE := $(shell date +%Y%m%d)' \
-       -e '/^IMG_PREFIX:=/ s/\($(SUBTARGET)\)/\1-$(BUILD_DATE)/' include/image.mk
+# Remove OpenClash leftovers if present
+rm -rf files/etc/openclash
+rm -f files/etc/init.d/openclash
+rm -f files/usr/bin/clash*
+rm -rf files/usr/share/openclash
 
-# set ubi to 122M
-# sed -i 's/reg = <0x5c0000 0x7000000>;/reg = <0x5c0000 0x7a40000>;/' target/linux/mediatek/dts/mt7981b-cudy-tr3000-v1-ubootmod.dts
+# Prepare directories
+BIN_DIR="$GITHUB_WORKSPACE/openwrt/files/usr/bin"
+XRAY_SHARE="$GITHUB_WORKSPACE/openwrt/files/usr/share/xray"
+mkdir -p "$BIN_DIR" "$XRAY_SHARE"
 
-# Add OpenClash Meta
-mkdir -p files/etc/openclash/core
+WORK_DIR="$(mktemp -d)"
+cd "$WORK_DIR"
 
-wget -qO "clash_meta.tar.gz" "https://raw.githubusercontent.com/vernesong/OpenClash/core/master/meta/clash-linux-arm64.tar.gz"
-tar -zxvf "clash_meta.tar.gz" -C files/etc/openclash/core/
-mv files/etc/openclash/core/clash files/etc/openclash/core/clash_meta
-chmod +x files/etc/openclash/core/clash_meta
-rm -f "clash_meta.tar.gz"
+# Xray
+XRAY_VERSION="25.10.15"
+curl -L -o xray.zip \
+  "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-arm64-v8a.zip"
+unzip -o xray.zip
+install -m 0755 xray "$BIN_DIR/xray"
+[ -f geoip.dat ] && install -m 0644 geoip.dat "$XRAY_SHARE/geoip.dat"
+[ -f geosite.dat ] && install -m 0644 geosite.dat "$XRAY_SHARE/geosite.dat"
+
+# sing-box
+SINGBOX_VERSION="1.12.12"
+curl -L -o sing-box.tar.gz \
+  "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-arm64.tar.gz"
+tar -xzf sing-box.tar.gz
+install -m 0755 "sing-box-${SINGBOX_VERSION}-linux-arm64/sing-box" "$BIN_DIR/sing-box"
+
+rm -rf "$WORK_DIR"
